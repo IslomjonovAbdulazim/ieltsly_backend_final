@@ -208,7 +208,7 @@ def create_paragraph(passage_id: int, paragraph: ParagraphCreate, db: Session = 
         max_order = db.query(func.max(DBParagraph.order)).filter(DBParagraph.passage_id == passage_id).scalar()
         paragraph.order = (max_order or 0) + 1
     
-    label = paragraph.label.upper() if paragraph.label else None
+    label = paragraph.label.upper() if paragraph.label and paragraph.label.strip() else None
     
     db_paragraph = DBParagraph(
         text=paragraph.text,
@@ -234,8 +234,9 @@ def update_paragraph(passage_id: int, paragraph_id: int, paragraph: ParagraphUpd
         db_paragraph.text = paragraph.text
     if paragraph.order is not None:
         db_paragraph.order = paragraph.order
-    if paragraph.label is not None:
-        db_paragraph.label = paragraph.label.upper() if paragraph.label else None
+    # Handle label update - check if label field is explicitly provided
+    if 'label' in paragraph.model_fields_set:
+        db_paragraph.label = paragraph.label.upper() if paragraph.label and paragraph.label.strip() else None
     
     db.commit()
     db.refresh(db_paragraph)
