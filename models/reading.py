@@ -1,5 +1,6 @@
 from pydantic import BaseModel, validator
 from typing import List, Optional
+from enum import Enum
 from sqlalchemy import Column, Integer, String, Text, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from config import Base
@@ -26,6 +27,7 @@ class DBReadingPassage(Base):
     
     test = relationship("DBReadingTest", back_populates="passages")
     paragraphs = relationship("DBParagraph", back_populates="passage", cascade="all, delete-orphan")
+    question_packs = relationship("DBQuestionPack", back_populates="passage", cascade="all, delete-orphan")
 
 
 class DBParagraph(Base):
@@ -38,6 +40,36 @@ class DBParagraph(Base):
     passage_id = Column(Integer, ForeignKey("reading_passages.id"), nullable=False)
     
     passage = relationship("DBReadingPassage", back_populates="paragraphs")
+
+
+class QuestionType(str, Enum):
+    TRUE_FALSE_NOT_GIVEN = "TRUE_FALSE_NOT_GIVEN"
+    YES_NO_NOT_GIVEN = "YES_NO_NOT_GIVEN"
+
+
+class DBQuestionPack(Base):
+    __tablename__ = "question_packs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    passage_id = Column(Integer, ForeignKey("reading_passages.id"), nullable=False)
+    type = Column(String, nullable=False)  # QuestionType enum value
+    start_question = Column(Integer, nullable=False)
+    end_question = Column(Integer, nullable=False)
+    
+    passage = relationship("DBReadingPassage", back_populates="question_packs")
+    questions = relationship("DBQuestion", back_populates="pack", cascade="all, delete-orphan")
+
+
+class DBQuestion(Base):
+    __tablename__ = "questions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    pack_id = Column(Integer, ForeignKey("question_packs.id"), nullable=False)
+    number = Column(Integer, nullable=False)
+    text = Column(Text, nullable=False)
+    type = Column(String, nullable=False)  # Same as pack type for consistency
+    
+    pack = relationship("DBQuestionPack", back_populates="questions")
 
 
 class ParagraphCreate(BaseModel):
@@ -74,6 +106,52 @@ class ReadingPassage(BaseModel):
     id: int
     title: str
     paragraphs: List[Paragraph] = []
+
+
+# Question Pack Models
+class QuestionPackCreate(BaseModel):
+    type: QuestionType
+    start_question: int
+    end_question: int
+
+    @validator('end_question')
+    def validate_end_after_start(cls, v, values):
+        if 'start_question' in values and v < values['start_question']:
+            raise ValueError('end_question must be greater than or equal to start_question')
+        return v
+
+
+class QuestionPackUpdate(BaseModel):
+    type: Optional[QuestionType] = None
+    start_question: Optional[int] = None
+    end_question: Optional[int] = None
+
+
+class QuestionPack(BaseModel):
+    id: int
+    passage_id: int
+    type: QuestionType
+    start_question: int
+    end_question: int
+
+
+# Unified Question Models
+class QuestionCreate(BaseModel):
+    number: int
+    text: str
+
+
+class QuestionUpdate(BaseModel):
+    number: Optional[int] = None
+    text: Optional[str] = None
+
+
+class Question(BaseModel):
+    id: int
+    pack_id: int
+    number: int
+    text: str
+    type: QuestionType
 
 
 class ReadingTest(BaseModel):

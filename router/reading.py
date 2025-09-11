@@ -6,7 +6,10 @@ from config import get_db
 from models.reading import (
     ReadingTest, ReadingPassage, ReadingPassageCreate, ReadingPassageUpdate,
     DBReadingTest, DBReadingPassage, DBParagraph,
-    Paragraph, ParagraphCreate, ParagraphUpdate
+    Paragraph, ParagraphCreate, ParagraphUpdate,
+    QuestionPack, QuestionPackCreate, QuestionPackUpdate, DBQuestionPack,
+    Question, QuestionCreate, QuestionUpdate, DBQuestion,
+    QuestionType
 )
 from auth import get_admin_user
 
@@ -293,4 +296,174 @@ def delete_paragraph(passage_id: int, paragraph_id: int, db: Session = Depends(g
     
     db.commit()
     return {"message": "Paragraph deleted successfully"}
+
+# Question Pack Management Endpoints
+@router.get("/passages/{passage_id}/question-packs/", response_model=List[QuestionPack])
+def get_question_packs(passage_id: int, db: Session = Depends(get_db)):
+    passage = db.query(DBReadingPassage).filter(DBReadingPassage.id == passage_id).first()
+    if not passage:
+        raise HTTPException(status_code=404, detail="Passage not found")
+    
+    packs = db.query(DBQuestionPack).filter(DBQuestionPack.passage_id == passage_id).order_by(DBQuestionPack.start_question).all()
+    return [QuestionPack(id=p.id, passage_id=p.passage_id, type=p.type, start_question=p.start_question, end_question=p.end_question) for p in packs]
+
+@router.post("/passages/{passage_id}/question-packs/", response_model=QuestionPack)
+def create_question_pack(passage_id: int, pack: QuestionPackCreate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    passage = db.query(DBReadingPassage).filter(DBReadingPassage.id == passage_id).first()
+    if not passage:
+        raise HTTPException(status_code=404, detail="Passage not found")
+    
+    # Check for overlapping question numbers with existing packs
+    existing_packs = db.query(DBQuestionPack).filter(DBQuestionPack.passage_id == passage_id).all()
+    for existing_pack in existing_packs:
+        if not (pack.end_question < existing_pack.start_question or pack.start_question > existing_pack.end_question):
+            raise HTTPException(status_code=400, detail=f"Question numbers {pack.start_question}-{pack.end_question} overlap with existing pack {existing_pack.start_question}-{existing_pack.end_question}")
+    
+    db_pack = DBQuestionPack(
+        passage_id=passage_id,
+        type=pack.type.value,
+        start_question=pack.start_question,
+        end_question=pack.end_question
+    )
+    db.add(db_pack)
+    db.commit()
+    db.refresh(db_pack)
+    return QuestionPack(id=db_pack.id, passage_id=db_pack.passage_id, type=db_pack.type, start_question=db_pack.start_question, end_question=db_pack.end_question)
+
+@router.put("/passages/{passage_id}/question-packs/{pack_id}", response_model=QuestionPack)
+def update_question_pack(passage_id: int, pack_id: int, pack: QuestionPackUpdate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    db_pack = db.query(DBQuestionPack).filter(
+        DBQuestionPack.id == pack_id,
+        DBQuestionPack.passage_id == passage_id
+    ).first()
+    if not db_pack:
+        raise HTTPException(status_code=404, detail="Question pack not found")
+    
+    # Validate question range if provided
+    start_q = pack.start_question if pack.start_question is not None else db_pack.start_question
+    end_q = pack.end_question if pack.end_question is not None else db_pack.end_question
+    
+    if end_q < start_q:
+        raise HTTPException(status_code=400, detail="end_question must be greater than or equal to start_question")
+    
+    # Check for overlaps with other packs (excluding current pack)
+    existing_packs = db.query(DBQuestionPack).filter(
+        DBQuestionPack.passage_id == passage_id,
+        DBQuestionPack.id != pack_id
+    ).all()
+    
+    for existing_pack in existing_packs:
+        if not (end_q < existing_pack.start_question or start_q > existing_pack.end_question):
+            raise HTTPException(status_code=400, detail=f"Question numbers {start_q}-{end_q} overlap with existing pack {existing_pack.start_question}-{existing_pack.end_question}")
+    
+    # Update fields
+    if pack.type is not None:
+        db_pack.type = pack.type.value
+    if pack.start_question is not None:
+        db_pack.start_question = pack.start_question
+    if pack.end_question is not None:
+        db_pack.end_question = pack.end_question
+    
+    db.commit()
+    db.refresh(db_pack)
+    return QuestionPack(id=db_pack.id, passage_id=db_pack.passage_id, type=db_pack.type, start_question=db_pack.start_question, end_question=db_pack.end_question)
+
+@router.delete("/passages/{passage_id}/question-packs/{pack_id}")
+def delete_question_pack(passage_id: int, pack_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    db_pack = db.query(DBQuestionPack).filter(
+        DBQuestionPack.id == pack_id,
+        DBQuestionPack.passage_id == passage_id
+    ).first()
+    if not db_pack:
+        raise HTTPException(status_code=404, detail="Question pack not found")
+    
+    db.delete(db_pack)
+    db.commit()
+    return {"message": "Question pack deleted successfully"}
+
+# Unified Questions Endpoints
+@router.get("/question-packs/{pack_id}/questions/", response_model=List[Question])
+def get_questions(pack_id: int, db: Session = Depends(get_db)):
+    pack = db.query(DBQuestionPack).filter(DBQuestionPack.id == pack_id).first()
+    if not pack:
+        raise HTTPException(status_code=404, detail="Question pack not found")
+    
+    questions = db.query(DBQuestion).filter(DBQuestion.pack_id == pack_id).order_by(DBQuestion.number).all()
+    return [Question(id=q.id, pack_id=q.pack_id, number=q.number, text=q.text, type=q.type) for q in questions]
+
+@router.post("/question-packs/{pack_id}/questions/", response_model=Question)
+def create_question(pack_id: int, question: QuestionCreate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    pack = db.query(DBQuestionPack).filter(DBQuestionPack.id == pack_id).first()
+    if not pack:
+        raise HTTPException(status_code=404, detail="Question pack not found")
+    
+    # Validate question number is within pack range
+    if question.number < pack.start_question or question.number > pack.end_question:
+        raise HTTPException(status_code=400, detail=f"Question number {question.number} is outside pack range {pack.start_question}-{pack.end_question}")
+    
+    # Check if question number already exists in this pack
+    existing = db.query(DBQuestion).filter(
+        DBQuestion.pack_id == pack_id,
+        DBQuestion.number == question.number
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Question number {question.number} already exists in this pack")
+    
+    db_question = DBQuestion(
+        pack_id=pack_id,
+        number=question.number,
+        text=question.text,
+        type=pack.type  # Use pack's type
+    )
+    db.add(db_question)
+    db.commit()
+    db.refresh(db_question)
+    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, text=db_question.text, type=db_question.type)
+
+@router.put("/question-packs/{pack_id}/questions/{question_id}", response_model=Question)
+def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    db_question = db.query(DBQuestion).filter(
+        DBQuestion.id == question_id,
+        DBQuestion.pack_id == pack_id
+    ).first()
+    if not db_question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    pack = db.query(DBQuestionPack).filter(DBQuestionPack.id == pack_id).first()
+    
+    # Validate new question number if provided
+    if question.number is not None:
+        if question.number < pack.start_question or question.number > pack.end_question:
+            raise HTTPException(status_code=400, detail=f"Question number {question.number} is outside pack range {pack.start_question}-{pack.end_question}")
+        
+        # Check if new number conflicts with existing questions (excluding current)
+        existing = db.query(DBQuestion).filter(
+            DBQuestion.pack_id == pack_id,
+            DBQuestion.number == question.number,
+            DBQuestion.id != question_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Question number {question.number} already exists in this pack")
+        
+        db_question.number = question.number
+    
+    if question.text is not None:
+        db_question.text = question.text
+    
+    db.commit()
+    db.refresh(db_question)
+    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, text=db_question.text, type=db_question.type)
+
+@router.delete("/question-packs/{pack_id}/questions/{question_id}")
+def delete_question(pack_id: int, question_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
+    db_question = db.query(DBQuestion).filter(
+        DBQuestion.id == question_id,
+        DBQuestion.pack_id == pack_id
+    ).first()
+    if not db_question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    db.delete(db_question)
+    db.commit()
+    return {"message": "Question deleted successfully"}
 
