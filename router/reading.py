@@ -389,7 +389,7 @@ def get_questions(pack_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Question pack not found")
     
     questions = db.query(DBQuestion).filter(DBQuestion.pack_id == pack_id).order_by(DBQuestion.number).all()
-    return [Question(id=q.id, pack_id=q.pack_id, number=q.number, text=q.text, type=q.type, correct_answer=q.correct_answer) for q in questions]
+    return [Question(id=q.id, pack_id=q.pack_id, number=q.number, title=q.title, text=q.text, type=q.type, correct_answer=q.correct_answer) for q in questions]
 
 @router.post("/question-packs/{pack_id}/questions/", response_model=Question)
 def create_question(pack_id: int, question: QuestionCreate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
@@ -434,6 +434,7 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
     db_question = DBQuestion(
         pack_id=pack_id,
         number=question.number,
+        title=question.title,
         text=question.text,
         type=pack.type,
         correct_answer=question.correct_answer
@@ -441,7 +442,7 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
     db.add(db_question)
     db.commit()
     db.refresh(db_question)
-    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, text=db_question.text, type=db_question.type, correct_answer=db_question.correct_answer)
+    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, title=db_question.title, text=db_question.text, type=db_question.type, correct_answer=db_question.correct_answer)
 
 @router.put("/question-packs/{pack_id}/questions/{question_id}", response_model=Question)
 def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
@@ -488,12 +489,15 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
         
         db_question.number = question.number
     
+    if question.title is not None:
+        db_question.title = question.title
+    
     if question.text is not None:
         db_question.text = question.text
     
     db.commit()
     db.refresh(db_question)
-    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, text=db_question.text, type=db_question.type, correct_answer=db_question.correct_answer)
+    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, title=db_question.title, text=db_question.text, type=db_question.type, correct_answer=db_question.correct_answer)
 
 @router.delete("/question-packs/{pack_id}/questions/{question_id}")
 def delete_question(pack_id: int, question_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):

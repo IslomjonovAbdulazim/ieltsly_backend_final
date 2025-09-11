@@ -79,6 +79,7 @@ class DBQuestion(Base):
     id = Column(Integer, primary_key=True, index=True)
     pack_id = Column(Integer, ForeignKey("reading_question_packs.id"), nullable=False)
     number = Column(Integer, nullable=False)
+    title = Column(String, nullable=True)  # Optional title for questions (especially useful for Summary Completion)
     text = Column(Text, nullable=False)
     type = Column(String, nullable=False)  # Same as pack type for consistency
     correct_answer = Column(JSON, nullable=True)  # String for T/F questions, JSON object for Summary Completion
@@ -152,6 +153,7 @@ class QuestionPack(BaseModel):
 # Unified Question Models
 class QuestionCreate(BaseModel):
     number: int
+    title: Optional[str] = None  # Optional title for questions
     text: str
     correct_answer: Optional[Union[str, Dict[str, str]]] = None  # String for T/F, Dict for Summary Completion
     
@@ -173,6 +175,7 @@ class QuestionCreate(BaseModel):
 
 class QuestionUpdate(BaseModel):
     number: Optional[int] = None
+    title: Optional[str] = None
     text: Optional[str] = None
     correct_answer: Optional[Union[str, Dict[str, str]]] = None
     
@@ -194,6 +197,7 @@ class Question(BaseModel):
     id: int
     pack_id: int
     number: int
+    title: Optional[str] = None
     text: str
     type: QuestionType
     correct_answer: Union[str, Dict[str, str]]
