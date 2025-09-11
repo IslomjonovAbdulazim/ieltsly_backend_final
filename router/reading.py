@@ -164,9 +164,11 @@ def update_passage(passage_id: int, passage: ReadingPassageUpdate, db: Session =
     db.commit()
     db.refresh(db_passage)
     
-    paragraphs = [Paragraph(id=p.id, text=p.text, order=p.order, label=p.label, passage_id=p.passage_id) for p in db_passage.paragraphs]
+    # Explicitly load paragraphs with proper ordering
+    paragraphs = db.query(DBParagraph).filter(DBParagraph.passage_id == passage_id).order_by(DBParagraph.order).all()
+    paragraph_list = [Paragraph(id=p.id, text=p.text, order=p.order, label=p.label, passage_id=p.passage_id) for p in paragraphs]
     
-    return ReadingPassage(id=db_passage.id, title=db_passage.title, paragraphs=paragraphs)
+    return ReadingPassage(id=db_passage.id, title=db_passage.title, paragraphs=paragraph_list)
 
 @router.delete("/passages/{passage_id}")
 def delete_passage(passage_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
