@@ -90,10 +90,31 @@ def get_passage(passage_id: int, db: Session = Depends(get_db)):
 
 @router.post("/passages/", response_model=ReadingPassage)
 def create_passage(passage: ReadingPassageCreate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
-    db_passage = DBReadingPassage(title=passage.title)
+    # Validate test exists if test_id is provided
+    if passage.test_id:
+        test = db.query(DBReadingTest).filter(DBReadingTest.id == passage.test_id).first()
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Check if test already has 3 passages
+        current_passage_count = len(test.passage_ids) if test.passage_ids else 0
+        if current_passage_count >= 3:
+            raise HTTPException(status_code=400, detail="Test already has maximum of 3 passages")
+    
+    # Create the passage
+    db_passage = DBReadingPassage(title=passage.title, test_id=passage.test_id)
     db.add(db_passage)
     db.commit()
     db.refresh(db_passage)
+    
+    # Update test's passage_ids if test_id is provided
+    if passage.test_id:
+        test = db.query(DBReadingTest).filter(DBReadingTest.id == passage.test_id).first()
+        current_ids = test.passage_ids if test.passage_ids else []
+        updated_ids = current_ids + [db_passage.id]
+        test.passage_ids = updated_ids
+        db.commit()
+    
     return ReadingPassage(id=db_passage.id, title=db_passage.title, paragraphs=[])
 
 @router.put("/passages/{passage_id}", response_model=ReadingPassage)
@@ -102,8 +123,43 @@ def update_passage(passage_id: int, passage: ReadingPassageUpdate, db: Session =
     if not db_passage:
         raise HTTPException(status_code=404, detail="Passage not found")
     
+    # Update title if provided
     if passage.title is not None:
         db_passage.title = passage.title
+    
+    # Handle test_id assignment/unassignment
+    if passage.test_id is not None:
+        # Validate new test exists
+        new_test = db.query(DBReadingTest).filter(DBReadingTest.id == passage.test_id).first()
+        if not new_test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        
+        # Check if new test already has 3 passages (excluding current passage)
+        current_passage_count = len([pid for pid in (new_test.passage_ids or []) if pid != passage_id])
+        if current_passage_count >= 3:
+            raise HTTPException(status_code=400, detail="Test already has maximum of 3 passages")
+        
+        # Remove passage from current test if assigned
+        if db_passage.test_id and db_passage.test_id != passage.test_id:
+            old_test = db.query(DBReadingTest).filter(DBReadingTest.id == db_passage.test_id).first()
+            if old_test and old_test.passage_ids:
+                old_test.passage_ids = [pid for pid in old_test.passage_ids if pid != passage_id]
+        
+        # Assign to new test
+        db_passage.test_id = passage.test_id
+        current_ids = new_test.passage_ids if new_test.passage_ids else []
+        if passage_id not in current_ids:
+            new_test.passage_ids = current_ids + [passage_id]
+    
+    # Handle unassignment (test_id = None)
+    elif hasattr(passage, 'test_id') and passage.test_id is None:
+        # Remove from current test if assigned
+        if db_passage.test_id:
+            old_test = db.query(DBReadingTest).filter(DBReadingTest.id == db_passage.test_id).first()
+            if old_test and old_test.passage_ids:
+                old_test.passage_ids = [pid for pid in old_test.passage_ids if pid != passage_id]
+        
+        db_passage.test_id = None
     
     db.commit()
     db.refresh(db_passage)
@@ -118,9 +174,19 @@ def delete_passage(passage_id: int, db: Session = Depends(get_db), admin: str = 
     if not db_passage:
         raise HTTPException(status_code=404, detail="Passage not found")
     
+    # Update test's passage_ids if passage belongs to a test
+    if db_passage.test_id:
+        test = db.query(DBReadingTest).filter(DBReadingTest.id == db_passage.test_id).first()
+        if test and test.passage_ids:
+            # Remove the passage_id from test's passage_ids list
+            updated_ids = [pid for pid in test.passage_ids if pid != passage_id]
+            test.passage_ids = updated_ids
+            db.commit()
+    
     db.delete(db_passage)
     db.commit()
     return {"message": "Passage deleted successfully"}
+
 
 # Paragraph Management Endpoints
 @router.get("/passages/{passage_id}/paragraphs/", response_model=List[Paragraph])

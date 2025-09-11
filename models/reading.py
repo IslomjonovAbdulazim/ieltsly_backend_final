@@ -62,10 +62,12 @@ class Paragraph(BaseModel):
 
 class ReadingPassageCreate(BaseModel):
     title: str
+    test_id: Optional[int] = None
 
 
 class ReadingPassageUpdate(BaseModel):
     title: Optional[str] = None
+    test_id: Optional[int] = None
 
 
 class ReadingPassage(BaseModel):

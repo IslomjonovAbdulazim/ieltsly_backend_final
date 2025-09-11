@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import Base, engine
 from router import reading, auth
 
+# Create tables with new schema
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
