@@ -46,6 +46,7 @@ class QuestionType(str, Enum):
     TRUE_FALSE_NOT_GIVEN = "TRUE_FALSE_NOT_GIVEN"
     YES_NO_NOT_GIVEN = "YES_NO_NOT_GIVEN"
     SUMMARY_COMPLETION = "SUMMARY_COMPLETION"
+    MULTIPLE_CHOICE = "MULTIPLE_CHOICE"
 
 
 class TrueFalseAnswer(str, Enum):
@@ -78,10 +79,12 @@ class DBQuestion(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     pack_id = Column(Integer, ForeignKey("reading_question_packs.id"), nullable=False)
-    title = Column(String, nullable=True)  # Optional title for questions (especially useful for Summary Completion)
-    text = Column(Text, nullable=False)
+    number = Column(Integer, nullable=False)  # Question number within the pack
+    title = Column(String, nullable=True)  # Optional title for questions
+    text = Column(Text, nullable=False)  # Question text
+    options = Column(JSON, nullable=True)  # Multiple choice options (A, B, C, D)
     type = Column(String, nullable=False)  # Same as pack type for consistency
-    correct_answer = Column(JSON, nullable=True)  # String for T/F questions, JSON object for Summary Completion
+    correct_answer = Column(JSON, nullable=True)  # String for T/F, JSON object for Summary Completion, single letter for MCQ
     
     pack = relationship("DBQuestionPack", back_populates="questions")
 
@@ -151,16 +154,20 @@ class QuestionPack(BaseModel):
 
 # Unified Question Models
 class QuestionCreate(BaseModel):
+    number: int
     title: Optional[str] = None  # Optional title for questions
     text: str
-    correct_answer: Optional[Union[str, Dict[str, str]]] = None  # String for T/F, Dict for Summary Completion
+    options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
+    correct_answer: Optional[Union[str, Dict[str, str]]] = None  # String for T/F/MCQ, Dict for Summary Completion
     
     @validator('correct_answer')
     def validate_correct_answer(cls, v):
         if v is not None:  # Only validate if provided
             if isinstance(v, str):
-                # String validation for T/F and Y/N questions
-                valid_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
+                # String validation for T/F, Y/N, and Multiple Choice questions
+                tf_yn_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
+                mcq_answers = ["A", "B", "C", "D"]
+                valid_answers = tf_yn_answers + mcq_answers
                 if v not in valid_answers:
                     raise ValueError(f'String correct answer must be one of: {", ".join(valid_answers)}')
             elif isinstance(v, dict):
@@ -172,15 +179,19 @@ class QuestionCreate(BaseModel):
 
 
 class QuestionUpdate(BaseModel):
+    number: Optional[int] = None
     title: Optional[str] = None
     text: Optional[str] = None
+    options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
     correct_answer: Optional[Union[str, Dict[str, str]]] = None
     
     @validator('correct_answer')
     def validate_correct_answer(cls, v):
         if v is not None:
             if isinstance(v, str):
-                valid_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
+                tf_yn_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
+                mcq_answers = ["A", "B", "C", "D"]
+                valid_answers = tf_yn_answers + mcq_answers
                 if v not in valid_answers:
                     raise ValueError(f'String correct answer must be one of: {", ".join(valid_answers)}')
             elif isinstance(v, dict):
@@ -193,8 +204,10 @@ class QuestionUpdate(BaseModel):
 class Question(BaseModel):
     id: int
     pack_id: int
+    number: int
     title: Optional[str] = None
     text: str
+    options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
     type: QuestionType
     correct_answer: Union[str, Dict[str, str]]
 
