@@ -127,39 +127,39 @@ def update_passage(passage_id: int, passage: ReadingPassageUpdate, db: Session =
     if passage.title is not None:
         db_passage.title = passage.title
     
-    # Handle test_id assignment/unassignment
-    if passage.test_id is not None:
-        # Validate new test exists
-        new_test = db.query(DBReadingTest).filter(DBReadingTest.id == passage.test_id).first()
-        if not new_test:
-            raise HTTPException(status_code=404, detail="Test not found")
+    # Handle test_id assignment/unassignment only if test_id field is explicitly provided
+    if 'test_id' in passage.model_fields_set:
+        if passage.test_id is not None:
+            # Validate new test exists
+            new_test = db.query(DBReadingTest).filter(DBReadingTest.id == passage.test_id).first()
+            if not new_test:
+                raise HTTPException(status_code=404, detail="Test not found")
+            
+            # Check if new test already has 3 passages (excluding current passage)
+            current_passage_count = len([pid for pid in (new_test.passage_ids or []) if pid != passage_id])
+            if current_passage_count >= 3:
+                raise HTTPException(status_code=400, detail="Test already has maximum of 3 passages")
+            
+            # Remove passage from current test if assigned
+            if db_passage.test_id and db_passage.test_id != passage.test_id:
+                old_test = db.query(DBReadingTest).filter(DBReadingTest.id == db_passage.test_id).first()
+                if old_test and old_test.passage_ids:
+                    old_test.passage_ids = [pid for pid in old_test.passage_ids if pid != passage_id]
+            
+            # Assign to new test
+            db_passage.test_id = passage.test_id
+            current_ids = new_test.passage_ids if new_test.passage_ids else []
+            if passage_id not in current_ids:
+                new_test.passage_ids = current_ids + [passage_id]
         
-        # Check if new test already has 3 passages (excluding current passage)
-        current_passage_count = len([pid for pid in (new_test.passage_ids or []) if pid != passage_id])
-        if current_passage_count >= 3:
-            raise HTTPException(status_code=400, detail="Test already has maximum of 3 passages")
-        
-        # Remove passage from current test if assigned
-        if db_passage.test_id and db_passage.test_id != passage.test_id:
-            old_test = db.query(DBReadingTest).filter(DBReadingTest.id == db_passage.test_id).first()
-            if old_test and old_test.passage_ids:
-                old_test.passage_ids = [pid for pid in old_test.passage_ids if pid != passage_id]
-        
-        # Assign to new test
-        db_passage.test_id = passage.test_id
-        current_ids = new_test.passage_ids if new_test.passage_ids else []
-        if passage_id not in current_ids:
-            new_test.passage_ids = current_ids + [passage_id]
-    
-    # Handle unassignment (test_id = None)
-    elif hasattr(passage, 'test_id') and passage.test_id is None:
-        # Remove from current test if assigned
-        if db_passage.test_id:
-            old_test = db.query(DBReadingTest).filter(DBReadingTest.id == db_passage.test_id).first()
-            if old_test and old_test.passage_ids:
-                old_test.passage_ids = [pid for pid in old_test.passage_ids if pid != passage_id]
-        
-        db_passage.test_id = None
+        else:  # test_id is explicitly None - unassign
+            # Remove from current test if assigned
+            if db_passage.test_id:
+                old_test = db.query(DBReadingTest).filter(DBReadingTest.id == db_passage.test_id).first()
+                if old_test and old_test.passage_ids:
+                    old_test.passage_ids = [pid for pid in old_test.passage_ids if pid != passage_id]
+            
+            db_passage.test_id = None
     
     db.commit()
     db.refresh(db_passage)
