@@ -399,19 +399,25 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
     
     # Set default correct answer if not provided
     if question.correct_answer is None:
-        # Use NOT_GIVEN as default for both types
-        question.correct_answer = "NOT_GIVEN"
+        if pack.type == "SUMMARY_COMPLETION":
+            question.correct_answer = {}  # Empty dict for Summary Completion
+        else:
+            question.correct_answer = "NOT_GIVEN"  # String for T/F and Y/N
     
     # Validate correct answer based on pack type
     if pack.type == "TRUE_FALSE_NOT_GIVEN":
         valid_answers = ["TRUE", "FALSE", "NOT_GIVEN"]
+        if not isinstance(question.correct_answer, str) or question.correct_answer not in valid_answers:
+            raise HTTPException(status_code=400, detail=f"For {pack.type} questions, correct answer must be one of: {', '.join(valid_answers)}")
     elif pack.type == "YES_NO_NOT_GIVEN":
         valid_answers = ["YES", "NO", "NOT_GIVEN"]
+        if not isinstance(question.correct_answer, str) or question.correct_answer not in valid_answers:
+            raise HTTPException(status_code=400, detail=f"For {pack.type} questions, correct answer must be one of: {', '.join(valid_answers)}")
+    elif pack.type == "SUMMARY_COMPLETION":
+        if not isinstance(question.correct_answer, dict):
+            raise HTTPException(status_code=400, detail="For SUMMARY_COMPLETION questions, correct answer must be a dictionary with numbered answers")
     else:
         raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
-    
-    if question.correct_answer not in valid_answers:
-        raise HTTPException(status_code=400, detail=f"For {pack.type} questions, correct answer must be one of: {', '.join(valid_answers)}")
     
     # Validate question number is within pack range
     if question.number < pack.start_question or question.number > pack.end_question:
@@ -452,13 +458,17 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
     if question.correct_answer is not None:
         if pack.type == "TRUE_FALSE_NOT_GIVEN":
             valid_answers = ["TRUE", "FALSE", "NOT_GIVEN"]
+            if not isinstance(question.correct_answer, str) or question.correct_answer not in valid_answers:
+                raise HTTPException(status_code=400, detail=f"For {pack.type} questions, correct answer must be one of: {', '.join(valid_answers)}")
         elif pack.type == "YES_NO_NOT_GIVEN":
             valid_answers = ["YES", "NO", "NOT_GIVEN"]
+            if not isinstance(question.correct_answer, str) or question.correct_answer not in valid_answers:
+                raise HTTPException(status_code=400, detail=f"For {pack.type} questions, correct answer must be one of: {', '.join(valid_answers)}")
+        elif pack.type == "SUMMARY_COMPLETION":
+            if not isinstance(question.correct_answer, dict):
+                raise HTTPException(status_code=400, detail="For SUMMARY_COMPLETION questions, correct answer must be a dictionary with numbered answers")
         else:
             raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
-        
-        if question.correct_answer not in valid_answers:
-            raise HTTPException(status_code=400, detail=f"For {pack.type} questions, correct answer must be one of: {', '.join(valid_answers)}")
         
         db_question.correct_answer = question.correct_answer
     

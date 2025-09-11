@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator
-from typing import List, Optional
+from typing import List, Optional, Union, Dict
 from enum import Enum
 from sqlalchemy import Column, Integer, String, Text, JSON, ForeignKey
 from sqlalchemy.orm import relationship
@@ -31,7 +31,7 @@ class DBReadingPassage(Base):
 
 
 class DBParagraph(Base):
-    __tablename__ = "paragraphs"
+    __tablename__ = "reading_paragraphs"
     
     id = Column(Integer, primary_key=True, index=True)
     text = Column(Text, nullable=False)
@@ -45,6 +45,7 @@ class DBParagraph(Base):
 class QuestionType(str, Enum):
     TRUE_FALSE_NOT_GIVEN = "TRUE_FALSE_NOT_GIVEN"
     YES_NO_NOT_GIVEN = "YES_NO_NOT_GIVEN"
+    SUMMARY_COMPLETION = "SUMMARY_COMPLETION"
 
 
 class TrueFalseAnswer(str, Enum):
@@ -60,7 +61,7 @@ class YesNoAnswer(str, Enum):
 
 
 class DBQuestionPack(Base):
-    __tablename__ = "question_packs"
+    __tablename__ = "reading_question_packs"
     
     id = Column(Integer, primary_key=True, index=True)
     passage_id = Column(Integer, ForeignKey("reading_passages.id"), nullable=False)
@@ -73,14 +74,14 @@ class DBQuestionPack(Base):
 
 
 class DBQuestion(Base):
-    __tablename__ = "questions"
+    __tablename__ = "reading_questions"
     
     id = Column(Integer, primary_key=True, index=True)
-    pack_id = Column(Integer, ForeignKey("question_packs.id"), nullable=False)
+    pack_id = Column(Integer, ForeignKey("reading_question_packs.id"), nullable=False)
     number = Column(Integer, nullable=False)
     text = Column(Text, nullable=False)
     type = Column(String, nullable=False)  # Same as pack type for consistency
-    correct_answer = Column(String, nullable=False)  # TRUE/FALSE/NOT_GIVEN or YES/NO/NOT_GIVEN
+    correct_answer = Column(JSON, nullable=True)  # String for T/F questions, JSON object for Summary Completion
     
     pack = relationship("DBQuestionPack", back_populates="questions")
 
@@ -152,29 +153,40 @@ class QuestionPack(BaseModel):
 class QuestionCreate(BaseModel):
     number: int
     text: str
-    correct_answer: Optional[str] = None  # Make optional for backwards compatibility
+    correct_answer: Optional[Union[str, Dict[str, str]]] = None  # String for T/F, Dict for Summary Completion
     
     @validator('correct_answer')
     def validate_correct_answer(cls, v):
         if v is not None:  # Only validate if provided
-            # Allow any of the valid answers for now - validation will happen in API based on pack type
-            valid_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
-            if v not in valid_answers:
-                raise ValueError(f'Correct answer must be one of: {", ".join(valid_answers)}')
+            if isinstance(v, str):
+                # String validation for T/F and Y/N questions
+                valid_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
+                if v not in valid_answers:
+                    raise ValueError(f'String correct answer must be one of: {", ".join(valid_answers)}')
+            elif isinstance(v, dict):
+                # Dict validation for Summary Completion - just check it's a dict
+                pass  # Further validation will happen in API based on pack type
+            else:
+                raise ValueError('Correct answer must be either a string or dictionary')
         return v
 
 
 class QuestionUpdate(BaseModel):
     number: Optional[int] = None
     text: Optional[str] = None
-    correct_answer: Optional[str] = None
+    correct_answer: Optional[Union[str, Dict[str, str]]] = None
     
     @validator('correct_answer')
     def validate_correct_answer(cls, v):
         if v is not None:
-            valid_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
-            if v not in valid_answers:
-                raise ValueError(f'Correct answer must be one of: {", ".join(valid_answers)}')
+            if isinstance(v, str):
+                valid_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
+                if v not in valid_answers:
+                    raise ValueError(f'String correct answer must be one of: {", ".join(valid_answers)}')
+            elif isinstance(v, dict):
+                pass  # Further validation will happen in API based on pack type
+            else:
+                raise ValueError('Correct answer must be either a string or dictionary')
         return v
 
 
@@ -184,7 +196,7 @@ class Question(BaseModel):
     number: int
     text: str
     type: QuestionType
-    correct_answer: str
+    correct_answer: Union[str, Dict[str, str]]
 
 
 class ReadingTest(BaseModel):
