@@ -47,6 +47,18 @@ class QuestionType(str, Enum):
     YES_NO_NOT_GIVEN = "YES_NO_NOT_GIVEN"
 
 
+class TrueFalseAnswer(str, Enum):
+    TRUE = "TRUE"
+    FALSE = "FALSE"
+    NOT_GIVEN = "NOT_GIVEN"
+
+
+class YesNoAnswer(str, Enum):
+    YES = "YES"
+    NO = "NO"
+    NOT_GIVEN = "NOT_GIVEN"
+
+
 class DBQuestionPack(Base):
     __tablename__ = "question_packs"
     
@@ -68,6 +80,7 @@ class DBQuestion(Base):
     number = Column(Integer, nullable=False)
     text = Column(Text, nullable=False)
     type = Column(String, nullable=False)  # Same as pack type for consistency
+    correct_answer = Column(String, nullable=False)  # TRUE/FALSE/NOT_GIVEN or YES/NO/NOT_GIVEN
     
     pack = relationship("DBQuestionPack", back_populates="questions")
 
@@ -139,11 +152,30 @@ class QuestionPack(BaseModel):
 class QuestionCreate(BaseModel):
     number: int
     text: str
+    correct_answer: Optional[str] = None  # Make optional for backwards compatibility
+    
+    @validator('correct_answer')
+    def validate_correct_answer(cls, v):
+        if v is not None:  # Only validate if provided
+            # Allow any of the valid answers for now - validation will happen in API based on pack type
+            valid_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
+            if v not in valid_answers:
+                raise ValueError(f'Correct answer must be one of: {", ".join(valid_answers)}')
+        return v
 
 
 class QuestionUpdate(BaseModel):
     number: Optional[int] = None
     text: Optional[str] = None
+    correct_answer: Optional[str] = None
+    
+    @validator('correct_answer')
+    def validate_correct_answer(cls, v):
+        if v is not None:
+            valid_answers = ["TRUE", "FALSE", "NOT_GIVEN", "YES", "NO"]
+            if v not in valid_answers:
+                raise ValueError(f'Correct answer must be one of: {", ".join(valid_answers)}')
+        return v
 
 
 class Question(BaseModel):
@@ -152,6 +184,7 @@ class Question(BaseModel):
     number: int
     text: str
     type: QuestionType
+    correct_answer: str
 
 
 class ReadingTest(BaseModel):

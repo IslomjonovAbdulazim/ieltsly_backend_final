@@ -389,13 +389,29 @@ def get_questions(pack_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Question pack not found")
     
     questions = db.query(DBQuestion).filter(DBQuestion.pack_id == pack_id).order_by(DBQuestion.number).all()
-    return [Question(id=q.id, pack_id=q.pack_id, number=q.number, text=q.text, type=q.type) for q in questions]
+    return [Question(id=q.id, pack_id=q.pack_id, number=q.number, text=q.text, type=q.type, correct_answer=q.correct_answer) for q in questions]
 
 @router.post("/question-packs/{pack_id}/questions/", response_model=Question)
 def create_question(pack_id: int, question: QuestionCreate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
     pack = db.query(DBQuestionPack).filter(DBQuestionPack.id == pack_id).first()
     if not pack:
         raise HTTPException(status_code=404, detail="Question pack not found")
+    
+    # Set default correct answer if not provided
+    if question.correct_answer is None:
+        # Use NOT_GIVEN as default for both types
+        question.correct_answer = "NOT_GIVEN"
+    
+    # Validate correct answer based on pack type
+    if pack.type == "TRUE_FALSE_NOT_GIVEN":
+        valid_answers = ["TRUE", "FALSE", "NOT_GIVEN"]
+    elif pack.type == "YES_NO_NOT_GIVEN":
+        valid_answers = ["YES", "NO", "NOT_GIVEN"]
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
+    
+    if question.correct_answer not in valid_answers:
+        raise HTTPException(status_code=400, detail=f"For {pack.type} questions, correct answer must be one of: {', '.join(valid_answers)}")
     
     # Validate question number is within pack range
     if question.number < pack.start_question or question.number > pack.end_question:
@@ -413,12 +429,13 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
         pack_id=pack_id,
         number=question.number,
         text=question.text,
-        type=pack.type  # Use pack's type
+        type=pack.type,
+        correct_answer=question.correct_answer
     )
     db.add(db_question)
     db.commit()
     db.refresh(db_question)
-    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, text=db_question.text, type=db_question.type)
+    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, text=db_question.text, type=db_question.type, correct_answer=db_question.correct_answer)
 
 @router.put("/question-packs/{pack_id}/questions/{question_id}", response_model=Question)
 def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
@@ -430,6 +447,20 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
         raise HTTPException(status_code=404, detail="Question not found")
     
     pack = db.query(DBQuestionPack).filter(DBQuestionPack.id == pack_id).first()
+    
+    # Validate correct answer if provided
+    if question.correct_answer is not None:
+        if pack.type == "TRUE_FALSE_NOT_GIVEN":
+            valid_answers = ["TRUE", "FALSE", "NOT_GIVEN"]
+        elif pack.type == "YES_NO_NOT_GIVEN":
+            valid_answers = ["YES", "NO", "NOT_GIVEN"]
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
+        
+        if question.correct_answer not in valid_answers:
+            raise HTTPException(status_code=400, detail=f"For {pack.type} questions, correct answer must be one of: {', '.join(valid_answers)}")
+        
+        db_question.correct_answer = question.correct_answer
     
     # Validate new question number if provided
     if question.number is not None:
@@ -452,7 +483,7 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
     
     db.commit()
     db.refresh(db_question)
-    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, text=db_question.text, type=db_question.type)
+    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, text=db_question.text, type=db_question.type, correct_answer=db_question.correct_answer)
 
 @router.delete("/question-packs/{pack_id}/questions/{question_id}")
 def delete_question(pack_id: int, question_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
