@@ -1,5 +1,5 @@
 from pydantic import BaseModel, validator
-from typing import List
+from typing import List, Optional
 from sqlalchemy import Column, Integer, String, Text, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from config import Base
@@ -22,28 +22,56 @@ class DBReadingPassage(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
-    paragraphs = Column(JSON, nullable=False)
-    labels = Column(JSON, nullable=False)
     test_id = Column(Integer, ForeignKey("reading_tests.id"), nullable=True)
     
     test = relationship("DBReadingTest", back_populates="passages")
+    paragraphs = relationship("DBParagraph", back_populates="passage", cascade="all, delete-orphan")
+
+
+class DBParagraph(Base):
+    __tablename__ = "paragraphs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(Text, nullable=False)
+    order = Column(Integer, nullable=False)
+    label = Column(String(1), nullable=True)
+    passage_id = Column(Integer, ForeignKey("reading_passages.id"), nullable=False)
+    
+    passage = relationship("DBReadingPassage", back_populates="paragraphs")
+
+
+class ParagraphCreate(BaseModel):
+    text: str
+    order: Optional[int] = None
+    label: Optional[str] = None
+
+
+class ParagraphUpdate(BaseModel):
+    text: Optional[str] = None
+    order: Optional[int] = None
+    label: Optional[str] = None
 
 
 class Paragraph(BaseModel):
-    index: int
+    id: int
     text: str
+    order: int
+    label: Optional[str] = None
+    passage_id: int
 
 
-class Label(BaseModel):
-    letter: str
-    paragraph_indexes: List[int]
+class ReadingPassageCreate(BaseModel):
+    title: str
+
+
+class ReadingPassageUpdate(BaseModel):
+    title: Optional[str] = None
 
 
 class ReadingPassage(BaseModel):
     id: int
     title: str
-    paragraphs: List[Paragraph]
-    labels: List[Label]
+    paragraphs: List[Paragraph] = []
 
 
 class ReadingTest(BaseModel):
