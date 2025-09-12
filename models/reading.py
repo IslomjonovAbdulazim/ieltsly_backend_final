@@ -176,14 +176,12 @@ class QuestionCreate(BaseModel):
                 if v not in valid_answers:
                     raise ValueError(f'String correct answer must be one of: {", ".join(valid_answers)}')
             elif isinstance(v, list):
-                # List validation for MCQ_MULTIPLE questions
-                mcq_answers = ["A", "B", "C", "D"]
-                if not all(answer in mcq_answers for answer in v):
-                    raise ValueError(f'List correct answers must contain only: {", ".join(mcq_answers)}')
+                # List validation for MCQ_MULTIPLE questions - flexible validation
                 if len(v) != len(set(v)):
                     raise ValueError('List correct answers must not contain duplicates')
                 if len(v) == 0:
                     raise ValueError('List correct answers must not be empty')
+                # Further validation will happen in API based on provided options
             elif isinstance(v, dict):
                 # Dict validation for Summary Completion - just check it's a dict
                 pass  # Further validation will happen in API based on pack type
@@ -211,14 +209,12 @@ class QuestionUpdate(BaseModel):
                 if v not in valid_answers:
                     raise ValueError(f'String correct answer must be one of: {", ".join(valid_answers)}')
             elif isinstance(v, list):
-                # List validation for MCQ_MULTIPLE questions
-                mcq_answers = ["A", "B", "C", "D"]
-                if not all(answer in mcq_answers for answer in v):
-                    raise ValueError(f'List correct answers must contain only: {", ".join(mcq_answers)}')
+                # List validation for MCQ_MULTIPLE questions - flexible validation
                 if len(v) != len(set(v)):
                     raise ValueError('List correct answers must not contain duplicates')
                 if len(v) == 0:
                     raise ValueError('List correct answers must not be empty')
+                # Further validation will happen in API based on provided options
             elif isinstance(v, dict):
                 pass  # Further validation will happen in API based on pack type
             else:

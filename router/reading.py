@@ -419,27 +419,46 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
         
         # number_count is now for maximum numbers allowed per blank, not total blanks
     elif pack.type == "MULTIPLE_CHOICE":
-        if not isinstance(question.correct_answer, str) or question.correct_answer not in ["A", "B", "C", "D"]:
-            raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, correct answer must be one of: A, B, C, D")
         if not question.options or not isinstance(question.options, dict):
             raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, options must be provided as a dictionary")
+        
+        # Must have exactly A, B, C, D
         required_keys = {"A", "B", "C", "D"}
         if set(question.options.keys()) != required_keys:
-            raise HTTPException(status_code=400, detail="MULTIPLE_CHOICE options must include exactly keys A, B, C, D")
+            raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, options must include exactly keys A, B, C, D")
+        
+        if not isinstance(question.correct_answer, str) or question.correct_answer not in ["A", "B", "C", "D"]:
+            raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, correct answer must be one of: A, B, C, D")
     elif pack.type == "MCQ_MULTIPLE":
+        if not question.options or not isinstance(question.options, dict):
+            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, options must be provided as a dictionary")
+        
+        # Can have A-J (up to 10 options)
+        valid_letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+        option_keys = list(question.options.keys())
+        
+        # Check all keys are valid letters
+        invalid_keys = [key for key in option_keys if key not in valid_letters]
+        if invalid_keys:
+            raise HTTPException(status_code=400, detail=f"For MCQ_MULTIPLE questions, option keys must be letters A-J. Invalid keys: {', '.join(invalid_keys)}")
+        
+        # Check we have 2-10 options
+        if len(option_keys) < 2:
+            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, at least 2 options are required")
+        if len(option_keys) > 10:
+            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, maximum 10 options allowed")
+        
         if not isinstance(question.correct_answer, list):
-            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answer must be a list of letters")
-        if not all(answer in ["A", "B", "C", "D"] for answer in question.correct_answer):
-            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answers must be from: A, B, C, D")
+            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answer must be a list")
         if len(question.correct_answer) == 0:
             raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, at least one correct answer is required")
         if len(question.correct_answer) != len(set(question.correct_answer)):
             raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answers must not contain duplicates")
-        if not question.options or not isinstance(question.options, dict):
-            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, options must be provided as a dictionary")
-        required_keys = {"A", "B", "C", "D"}
-        if set(question.options.keys()) != required_keys:
-            raise HTTPException(status_code=400, detail="MCQ_MULTIPLE options must include exactly keys A, B, C, D")
+        
+        # Validate all correct answers are valid option keys
+        invalid_answers = [ans for ans in question.correct_answer if ans not in option_keys]
+        if invalid_answers:
+            raise HTTPException(status_code=400, detail=f"For MCQ_MULTIPLE questions, correct answers must be from available options: {', '.join(option_keys)}. Invalid answers: {', '.join(invalid_answers)}")
     else:
         raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
     
@@ -502,13 +521,17 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
                 raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, correct answer must be one of: A, B, C, D")
         elif pack.type == "MCQ_MULTIPLE":
             if not isinstance(question.correct_answer, list):
-                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answer must be a list of letters")
-            if not all(answer in ["A", "B", "C", "D"] for answer in question.correct_answer):
-                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answers must be from: A, B, C, D")
+                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answer must be a list")
             if len(question.correct_answer) == 0:
                 raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, at least one correct answer is required")
             if len(question.correct_answer) != len(set(question.correct_answer)):
                 raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answers must not contain duplicates")
+            
+            # Get current options or use provided options for validation
+            available_options = list((question.options or db_question.options).keys())
+            invalid_answers = [ans for ans in question.correct_answer if ans not in available_options]
+            if invalid_answers:
+                raise HTTPException(status_code=400, detail=f"For MCQ_MULTIPLE questions, correct answers must be from available options: {', '.join(available_options)}. Invalid answers: {', '.join(invalid_answers)}")
         else:
             raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
         
@@ -538,12 +561,28 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
     
     if question.options is not None:
         # Validate options for Multiple Choice questions
-        if pack.type in ["MULTIPLE_CHOICE", "MCQ_MULTIPLE"]:
+        if pack.type == "MULTIPLE_CHOICE":
             if not isinstance(question.options, dict):
-                raise HTTPException(status_code=400, detail=f"For {pack.type} questions, options must be a dictionary")
+                raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, options must be a dictionary")
             required_keys = {"A", "B", "C", "D"}
             if set(question.options.keys()) != required_keys:
-                raise HTTPException(status_code=400, detail=f"{pack.type} options must include exactly keys A, B, C, D")
+                raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, options must include exactly keys A, B, C, D")
+        elif pack.type == "MCQ_MULTIPLE":
+            if not isinstance(question.options, dict):
+                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, options must be a dictionary")
+            
+            valid_letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+            option_keys = list(question.options.keys())
+            
+            invalid_keys = [key for key in option_keys if key not in valid_letters]
+            if invalid_keys:
+                raise HTTPException(status_code=400, detail=f"For MCQ_MULTIPLE questions, option keys must be letters A-J. Invalid keys: {', '.join(invalid_keys)}")
+            
+            if len(option_keys) < 2:
+                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, at least 2 options are required")
+            if len(option_keys) > 10:
+                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, maximum 10 options allowed")
+        
         db_question.options = question.options
     
     if question.word_count is not None:
