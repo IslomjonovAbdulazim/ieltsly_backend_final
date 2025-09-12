@@ -388,7 +388,7 @@ def get_questions(pack_id: int, db: Session = Depends(get_db)):
     if not pack:
         raise HTTPException(status_code=404, detail="Question pack not found")
     
-    questions = db.query(DBQuestion).filter(DBQuestion.pack_id == pack_id).order_by(DBQuestion.number).all()
+    questions = db.query(DBQuestion).filter(DBQuestion.pack_id == pack_id).order_by(DBQuestion.number.nulls_last()).all()
     return [Question(id=q.id, pack_id=q.pack_id, number=q.number, title=q.title, text=q.text, options=q.options, word_count=q.word_count, number_count=q.number_count, type=q.type, correct_answer=q.correct_answer) for q in questions]
 
 @router.post("/question-packs/{pack_id}/questions/", response_model=Question)
@@ -442,11 +442,14 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
         if invalid_keys:
             raise HTTPException(status_code=400, detail=f"For MCQ_MULTIPLE questions, option keys must be letters A-J. Invalid keys: {', '.join(invalid_keys)}")
         
-        # Check we have 2-10 options
+        # Check we have 2 options minimum, maximum based on pack range
+        pack_range = pack.end_question - pack.start_question + 1
+        max_options = min(10, pack_range)  # Cap at 10, but limited by pack range
+        
         if len(option_keys) < 2:
             raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, at least 2 options are required")
-        if len(option_keys) > 10:
-            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, maximum 10 options allowed")
+        if len(option_keys) > max_options:
+            raise HTTPException(status_code=400, detail=f"For MCQ_MULTIPLE questions, maximum {max_options} options allowed (based on pack range {pack.start_question}-{pack.end_question})")
         
         if not isinstance(question.correct_answer, list):
             raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answer must be a list")
@@ -462,17 +465,24 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
     else:
         raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
     
-    # Validate question number is within pack range
-    if question.number < pack.start_question or question.number > pack.end_question:
-        raise HTTPException(status_code=400, detail=f"Question number {question.number} is outside pack range {pack.start_question}-{pack.end_question}")
-    
-    # Check if question number already exists in this pack
-    existing = db.query(DBQuestion).filter(
-        DBQuestion.pack_id == pack_id,
-        DBQuestion.number == question.number
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail=f"Question number {question.number} already exists in this pack")
+    # Validate question number for non-MCQ_MULTIPLE types
+    if pack.type != "MCQ_MULTIPLE":
+        if question.number is None:
+            raise HTTPException(status_code=400, detail=f"For {pack.type} questions, number field is required")
+        
+        if question.number < pack.start_question or question.number > pack.end_question:
+            raise HTTPException(status_code=400, detail=f"Question number {question.number} is outside pack range {pack.start_question}-{pack.end_question}")
+        
+        # Check if question number already exists in this pack
+        existing = db.query(DBQuestion).filter(
+            DBQuestion.pack_id == pack_id,
+            DBQuestion.number == question.number
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Question number {question.number} already exists in this pack")
+    else:
+        # For MCQ_MULTIPLE, set number to None since it's not used
+        question.number = None
     
     db_question = DBQuestion(
         pack_id=pack_id,
@@ -537,8 +547,8 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
         
         db_question.correct_answer = question.correct_answer
     
-    # Validate new question number if provided
-    if question.number is not None:
+    # Validate new question number if provided (not for MCQ_MULTIPLE)
+    if pack.type != "MCQ_MULTIPLE" and question.number is not None:
         if question.number < pack.start_question or question.number > pack.end_question:
             raise HTTPException(status_code=400, detail=f"Question number {question.number} is outside pack range {pack.start_question}-{pack.end_question}")
         
@@ -552,6 +562,9 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
             raise HTTPException(status_code=400, detail=f"Question number {question.number} already exists in this pack")
         
         db_question.number = question.number
+    elif pack.type == "MCQ_MULTIPLE":
+        # For MCQ_MULTIPLE, ignore any provided number and set to None
+        db_question.number = None
     
     if question.title is not None:
         db_question.title = question.title
@@ -578,10 +591,13 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
             if invalid_keys:
                 raise HTTPException(status_code=400, detail=f"For MCQ_MULTIPLE questions, option keys must be letters A-J. Invalid keys: {', '.join(invalid_keys)}")
             
+            pack_range = pack.end_question - pack.start_question + 1
+            max_options = min(10, pack_range)
+            
             if len(option_keys) < 2:
                 raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, at least 2 options are required")
-            if len(option_keys) > 10:
-                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, maximum 10 options allowed")
+            if len(option_keys) > max_options:
+                raise HTTPException(status_code=400, detail=f"For MCQ_MULTIPLE questions, maximum {max_options} options allowed (based on pack range {pack.start_question}-{pack.end_question})")
         
         db_question.options = question.options
     

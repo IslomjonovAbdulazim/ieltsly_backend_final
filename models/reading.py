@@ -80,7 +80,7 @@ class DBQuestion(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     pack_id = Column(Integer, ForeignKey("reading_question_packs.id"), nullable=False)
-    number = Column(Integer, nullable=False)  # Question number within the pack
+    number = Column(Integer, nullable=True)  # Question number within the pack (nullable for MCQ_MULTIPLE)
     title = Column(String, nullable=True)  # Optional title for questions
     text = Column(Text, nullable=False)  # Question text
     options = Column(JSON, nullable=True)  # Multiple choice options (A, B, C, D)
@@ -157,7 +157,7 @@ class QuestionPack(BaseModel):
 
 # Unified Question Models
 class QuestionCreate(BaseModel):
-    number: int
+    number: Optional[int] = None  # Required for MULTIPLE_CHOICE, TRUE_FALSE_NOT_GIVEN, YES_NO_NOT_GIVEN, SUMMARY_COMPLETION. Not used for MCQ_MULTIPLE
     title: Optional[str] = None  # Optional title for questions
     text: str
     options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
@@ -225,7 +225,7 @@ class QuestionUpdate(BaseModel):
 class Question(BaseModel):
     id: int
     pack_id: int
-    number: int
+    number: Optional[int] = None  # Nullable for MCQ_MULTIPLE
     title: Optional[str] = None
     text: str
     options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
