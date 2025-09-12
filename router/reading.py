@@ -389,7 +389,7 @@ def get_questions(pack_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Question pack not found")
     
     questions = db.query(DBQuestion).filter(DBQuestion.pack_id == pack_id).order_by(DBQuestion.number).all()
-    return [Question(id=q.id, pack_id=q.pack_id, number=q.number, title=q.title, text=q.text, options=q.options, type=q.type, correct_answer=q.correct_answer) for q in questions]
+    return [Question(id=q.id, pack_id=q.pack_id, number=q.number, title=q.title, text=q.text, options=q.options, word_count=q.word_count, number_count=q.number_count, type=q.type, correct_answer=q.correct_answer) for q in questions]
 
 @router.post("/question-packs/{pack_id}/questions/", response_model=Question)
 def create_question(pack_id: int, question: QuestionCreate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
@@ -416,6 +416,8 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
     elif pack.type == "SUMMARY_COMPLETION":
         if not isinstance(question.correct_answer, dict):
             raise HTTPException(status_code=400, detail="For SUMMARY_COMPLETION questions, correct answer must be a dictionary with numbered answers")
+        
+        # number_count is now for maximum numbers allowed per blank, not total blanks
     elif pack.type == "MULTIPLE_CHOICE":
         if not isinstance(question.correct_answer, str) or question.correct_answer not in ["A", "B", "C", "D"]:
             raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, correct answer must be one of: A, B, C, D")
@@ -424,6 +426,20 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
         required_keys = {"A", "B", "C", "D"}
         if set(question.options.keys()) != required_keys:
             raise HTTPException(status_code=400, detail="MULTIPLE_CHOICE options must include exactly keys A, B, C, D")
+    elif pack.type == "MCQ_MULTIPLE":
+        if not isinstance(question.correct_answer, list):
+            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answer must be a list of letters")
+        if not all(answer in ["A", "B", "C", "D"] for answer in question.correct_answer):
+            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answers must be from: A, B, C, D")
+        if len(question.correct_answer) == 0:
+            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, at least one correct answer is required")
+        if len(question.correct_answer) != len(set(question.correct_answer)):
+            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answers must not contain duplicates")
+        if not question.options or not isinstance(question.options, dict):
+            raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, options must be provided as a dictionary")
+        required_keys = {"A", "B", "C", "D"}
+        if set(question.options.keys()) != required_keys:
+            raise HTTPException(status_code=400, detail="MCQ_MULTIPLE options must include exactly keys A, B, C, D")
     else:
         raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
     
@@ -445,13 +461,15 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
         title=question.title,
         text=question.text,
         options=question.options,
+        word_count=question.word_count,
+        number_count=question.number_count,
         type=pack.type,
         correct_answer=question.correct_answer
     )
     db.add(db_question)
     db.commit()
     db.refresh(db_question)
-    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, title=db_question.title, text=db_question.text, options=db_question.options, type=db_question.type, correct_answer=db_question.correct_answer)
+    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, title=db_question.title, text=db_question.text, options=db_question.options, word_count=db_question.word_count, number_count=db_question.number_count, type=db_question.type, correct_answer=db_question.correct_answer)
 
 @router.put("/question-packs/{pack_id}/questions/{question_id}", response_model=Question)
 def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):
@@ -477,9 +495,20 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
         elif pack.type == "SUMMARY_COMPLETION":
             if not isinstance(question.correct_answer, dict):
                 raise HTTPException(status_code=400, detail="For SUMMARY_COMPLETION questions, correct answer must be a dictionary with numbered answers")
+            
+            # number_count is now for maximum numbers allowed per blank, not total blanks
         elif pack.type == "MULTIPLE_CHOICE":
             if not isinstance(question.correct_answer, str) or question.correct_answer not in ["A", "B", "C", "D"]:
                 raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, correct answer must be one of: A, B, C, D")
+        elif pack.type == "MCQ_MULTIPLE":
+            if not isinstance(question.correct_answer, list):
+                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answer must be a list of letters")
+            if not all(answer in ["A", "B", "C", "D"] for answer in question.correct_answer):
+                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answers must be from: A, B, C, D")
+            if len(question.correct_answer) == 0:
+                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, at least one correct answer is required")
+            if len(question.correct_answer) != len(set(question.correct_answer)):
+                raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, correct answers must not contain duplicates")
         else:
             raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
         
@@ -509,17 +538,23 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
     
     if question.options is not None:
         # Validate options for Multiple Choice questions
-        if pack.type == "MULTIPLE_CHOICE":
+        if pack.type in ["MULTIPLE_CHOICE", "MCQ_MULTIPLE"]:
             if not isinstance(question.options, dict):
-                raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, options must be a dictionary")
+                raise HTTPException(status_code=400, detail=f"For {pack.type} questions, options must be a dictionary")
             required_keys = {"A", "B", "C", "D"}
             if set(question.options.keys()) != required_keys:
-                raise HTTPException(status_code=400, detail="MULTIPLE_CHOICE options must include exactly keys A, B, C, D")
+                raise HTTPException(status_code=400, detail=f"{pack.type} options must include exactly keys A, B, C, D")
         db_question.options = question.options
+    
+    if question.word_count is not None:
+        db_question.word_count = question.word_count
+    
+    if question.number_count is not None:
+        db_question.number_count = question.number_count
     
     db.commit()
     db.refresh(db_question)
-    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, title=db_question.title, text=db_question.text, options=db_question.options, type=db_question.type, correct_answer=db_question.correct_answer)
+    return Question(id=db_question.id, pack_id=db_question.pack_id, number=db_question.number, title=db_question.title, text=db_question.text, options=db_question.options, word_count=db_question.word_count, number_count=db_question.number_count, type=db_question.type, correct_answer=db_question.correct_answer)
 
 @router.delete("/question-packs/{pack_id}/questions/{question_id}")
 def delete_question(pack_id: int, question_id: int, db: Session = Depends(get_db), admin: str = Depends(get_admin_user)):

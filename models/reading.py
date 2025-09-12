@@ -47,6 +47,7 @@ class QuestionType(str, Enum):
     YES_NO_NOT_GIVEN = "YES_NO_NOT_GIVEN"
     SUMMARY_COMPLETION = "SUMMARY_COMPLETION"
     MULTIPLE_CHOICE = "MULTIPLE_CHOICE"
+    MCQ_MULTIPLE = "MCQ_MULTIPLE"
 
 
 class TrueFalseAnswer(str, Enum):
@@ -83,6 +84,8 @@ class DBQuestion(Base):
     title = Column(String, nullable=True)  # Optional title for questions
     text = Column(Text, nullable=False)  # Question text
     options = Column(JSON, nullable=True)  # Multiple choice options (A, B, C, D)
+    word_count = Column(Integer, nullable=True)  # Maximum words allowed per blank for summary completion
+    number_count = Column(Integer, nullable=True)  # Maximum numbers allowed per blank for summary completion
     type = Column(String, nullable=False)  # Same as pack type for consistency
     correct_answer = Column(JSON, nullable=True)  # String for T/F, JSON object for Summary Completion, single letter for MCQ
     
@@ -158,7 +161,9 @@ class QuestionCreate(BaseModel):
     title: Optional[str] = None  # Optional title for questions
     text: str
     options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
-    correct_answer: Optional[Union[str, Dict[str, str]]] = None  # String for T/F/MCQ, Dict for Summary Completion
+    word_count: Optional[int] = None  # Maximum words allowed per blank for summary completion
+    number_count: Optional[int] = None  # Maximum numbers allowed per blank for summary completion
+    correct_answer: Optional[Union[str, Dict[str, str], List[str]]] = None  # String for T/F/MCQ, Dict for Summary Completion, List for MCQ_MULTIPLE
     
     @validator('correct_answer')
     def validate_correct_answer(cls, v):
@@ -170,11 +175,20 @@ class QuestionCreate(BaseModel):
                 valid_answers = tf_yn_answers + mcq_answers
                 if v not in valid_answers:
                     raise ValueError(f'String correct answer must be one of: {", ".join(valid_answers)}')
+            elif isinstance(v, list):
+                # List validation for MCQ_MULTIPLE questions
+                mcq_answers = ["A", "B", "C", "D"]
+                if not all(answer in mcq_answers for answer in v):
+                    raise ValueError(f'List correct answers must contain only: {", ".join(mcq_answers)}')
+                if len(v) != len(set(v)):
+                    raise ValueError('List correct answers must not contain duplicates')
+                if len(v) == 0:
+                    raise ValueError('List correct answers must not be empty')
             elif isinstance(v, dict):
                 # Dict validation for Summary Completion - just check it's a dict
                 pass  # Further validation will happen in API based on pack type
             else:
-                raise ValueError('Correct answer must be either a string or dictionary')
+                raise ValueError('Correct answer must be a string, list, or dictionary')
         return v
 
 
@@ -183,7 +197,9 @@ class QuestionUpdate(BaseModel):
     title: Optional[str] = None
     text: Optional[str] = None
     options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
-    correct_answer: Optional[Union[str, Dict[str, str]]] = None
+    word_count: Optional[int] = None  # Maximum words allowed per blank for summary completion
+    number_count: Optional[int] = None  # Maximum numbers allowed per blank for summary completion
+    correct_answer: Optional[Union[str, Dict[str, str], List[str]]] = None
     
     @validator('correct_answer')
     def validate_correct_answer(cls, v):
@@ -194,10 +210,19 @@ class QuestionUpdate(BaseModel):
                 valid_answers = tf_yn_answers + mcq_answers
                 if v not in valid_answers:
                     raise ValueError(f'String correct answer must be one of: {", ".join(valid_answers)}')
+            elif isinstance(v, list):
+                # List validation for MCQ_MULTIPLE questions
+                mcq_answers = ["A", "B", "C", "D"]
+                if not all(answer in mcq_answers for answer in v):
+                    raise ValueError(f'List correct answers must contain only: {", ".join(mcq_answers)}')
+                if len(v) != len(set(v)):
+                    raise ValueError('List correct answers must not contain duplicates')
+                if len(v) == 0:
+                    raise ValueError('List correct answers must not be empty')
             elif isinstance(v, dict):
                 pass  # Further validation will happen in API based on pack type
             else:
-                raise ValueError('Correct answer must be either a string or dictionary')
+                raise ValueError('Correct answer must be a string, list, or dictionary')
         return v
 
 
@@ -208,8 +233,10 @@ class Question(BaseModel):
     title: Optional[str] = None
     text: str
     options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
+    word_count: Optional[int] = None  # Maximum words allowed per blank for summary completion
+    number_count: Optional[int] = None  # Maximum numbers allowed per blank for summary completion
     type: QuestionType
-    correct_answer: Union[str, Dict[str, str]]
+    correct_answer: Union[str, Dict[str, str], List[str]]
 
 
 class ReadingTest(BaseModel):
