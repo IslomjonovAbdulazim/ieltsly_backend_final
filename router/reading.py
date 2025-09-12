@@ -399,8 +399,8 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
     
     # Set default correct answer if not provided
     if question.correct_answer is None:
-        if pack.type == "SUMMARY_COMPLETION":
-            question.correct_answer = {}  # Empty dict for Summary Completion
+        if pack.type in ["SUMMARY_COMPLETION", "SENTENCE_COMPLETION"]:
+            question.correct_answer = {}  # Empty dict for Summary/Sentence Completion
         else:
             question.correct_answer = "NOT_GIVEN"  # String for T/F and Y/N
     
@@ -418,6 +418,11 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
             raise HTTPException(status_code=400, detail="For SUMMARY_COMPLETION questions, correct answer must be a dictionary with numbered answers")
         
         # number_count is now for maximum numbers allowed per blank, not total blanks
+    elif pack.type == "SENTENCE_COMPLETION":
+        if not isinstance(question.correct_answer, dict):
+            raise HTTPException(status_code=400, detail="For SENTENCE_COMPLETION questions, correct answer must be a dictionary with numbered answers")
+        
+        # Similar to SUMMARY_COMPLETION but typically contains only one question per sentence
     elif pack.type == "MULTIPLE_CHOICE":
         if not question.options or not isinstance(question.options, dict):
             raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, options must be provided as a dictionary")
@@ -526,6 +531,11 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
                 raise HTTPException(status_code=400, detail="For SUMMARY_COMPLETION questions, correct answer must be a dictionary with numbered answers")
             
             # number_count is now for maximum numbers allowed per blank, not total blanks
+        elif pack.type == "SENTENCE_COMPLETION":
+            if not isinstance(question.correct_answer, dict):
+                raise HTTPException(status_code=400, detail="For SENTENCE_COMPLETION questions, correct answer must be a dictionary with numbered answers")
+            
+            # Similar to SUMMARY_COMPLETION but typically contains only one question per sentence
         elif pack.type == "MULTIPLE_CHOICE":
             if not isinstance(question.correct_answer, str) or question.correct_answer not in ["A", "B", "C", "D"]:
                 raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, correct answer must be one of: A, B, C, D")
