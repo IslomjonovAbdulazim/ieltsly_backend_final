@@ -399,8 +399,8 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
     
     # Set default correct answer if not provided
     if question.correct_answer is None:
-        if pack.type in ["SUMMARY_COMPLETION", "SENTENCE_COMPLETION"]:
-            question.correct_answer = {}  # Empty dict for Summary/Sentence Completion
+        if pack.type in ["SUMMARY_COMPLETION", "SENTENCE_COMPLETION", "CHOOSE_FROM_BOX"]:
+            question.correct_answer = {}  # Empty dict for Summary/Sentence/Choose from Box Completion
         else:
             question.correct_answer = "NOT_GIVEN"  # String for T/F and Y/N
     
@@ -423,6 +423,23 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
             raise HTTPException(status_code=400, detail="For SENTENCE_COMPLETION questions, correct answer must be a dictionary with numbered answers")
         
         # Similar to SUMMARY_COMPLETION but typically contains only one question per sentence
+    elif pack.type == "CHOOSE_FROM_BOX":
+        if not isinstance(question.correct_answer, dict):
+            raise HTTPException(status_code=400, detail="For CHOOSE_FROM_BOX questions, correct answer must be a dictionary with numbered answers")
+        
+        if not question.options or not isinstance(question.options, dict):
+            raise HTTPException(status_code=400, detail="For CHOOSE_FROM_BOX questions, options (word box) must be provided as a dictionary")
+        
+        # Validate that all correct answers exist in the word box
+        if question.correct_answer:
+            available_words = list(question.options.values())
+            for blank_num, answer in question.correct_answer.items():
+                if answer not in available_words:
+                    raise HTTPException(status_code=400, detail=f"Answer '{answer}' for blank {blank_num} is not available in the word box")
+        
+        # Word box should contain words, not letter options like MCQ
+        if any(len(key) == 1 and key.isalpha() and key.isupper() for key in question.options.keys()):
+            raise HTTPException(status_code=400, detail="For CHOOSE_FROM_BOX questions, word box should contain word identifiers, not letter options")
     elif pack.type == "MULTIPLE_CHOICE":
         if not question.options or not isinstance(question.options, dict):
             raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, options must be provided as a dictionary")
@@ -470,8 +487,8 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
     else:
         raise HTTPException(status_code=400, detail=f"Unknown question type: {pack.type}")
     
-    # Validate question number for non-MCQ_MULTIPLE types
-    if pack.type != "MCQ_MULTIPLE":
+    # Validate question number for types that use individual question numbers
+    if pack.type not in ["MCQ_MULTIPLE", "CHOOSE_FROM_BOX"]:
         if question.number is None:
             raise HTTPException(status_code=400, detail=f"For {pack.type} questions, number field is required")
         
@@ -486,7 +503,7 @@ def create_question(pack_id: int, question: QuestionCreate, db: Session = Depend
         if existing:
             raise HTTPException(status_code=400, detail=f"Question number {question.number} already exists in this pack")
     else:
-        # For MCQ_MULTIPLE, set number to None since it's not used
+        # For MCQ_MULTIPLE and CHOOSE_FROM_BOX, set number to None since it's not used
         question.number = None
     
     db_question = DBQuestion(
@@ -536,6 +553,15 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
                 raise HTTPException(status_code=400, detail="For SENTENCE_COMPLETION questions, correct answer must be a dictionary with numbered answers")
             
             # Similar to SUMMARY_COMPLETION but typically contains only one question per sentence
+        elif pack.type == "CHOOSE_FROM_BOX":
+            if not isinstance(question.correct_answer, dict):
+                raise HTTPException(status_code=400, detail="For CHOOSE_FROM_BOX questions, correct answer must be a dictionary with numbered answers")
+            
+            # Get current options or use provided options for validation
+            available_options = list((question.options or db_question.options).values())
+            for blank_num, answer in question.correct_answer.items():
+                if answer not in available_options:
+                    raise HTTPException(status_code=400, detail=f"Answer '{answer}' for blank {blank_num} is not available in the word box")
         elif pack.type == "MULTIPLE_CHOICE":
             if not isinstance(question.correct_answer, str) or question.correct_answer not in ["A", "B", "C", "D"]:
                 raise HTTPException(status_code=400, detail="For MULTIPLE_CHOICE questions, correct answer must be one of: A, B, C, D")
@@ -557,8 +583,8 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
         
         db_question.correct_answer = question.correct_answer
     
-    # Validate new question number if provided (not for MCQ_MULTIPLE)
-    if pack.type != "MCQ_MULTIPLE" and question.number is not None:
+    # Validate new question number if provided (not for MCQ_MULTIPLE or CHOOSE_FROM_BOX)
+    if pack.type not in ["MCQ_MULTIPLE", "CHOOSE_FROM_BOX"] and question.number is not None:
         if question.number < pack.start_question or question.number > pack.end_question:
             raise HTTPException(status_code=400, detail=f"Question number {question.number} is outside pack range {pack.start_question}-{pack.end_question}")
         
@@ -572,8 +598,8 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
             raise HTTPException(status_code=400, detail=f"Question number {question.number} already exists in this pack")
         
         db_question.number = question.number
-    elif pack.type == "MCQ_MULTIPLE":
-        # For MCQ_MULTIPLE, ignore any provided number and set to None
+    elif pack.type in ["MCQ_MULTIPLE", "CHOOSE_FROM_BOX"]:
+        # For MCQ_MULTIPLE and CHOOSE_FROM_BOX, ignore any provided number and set to None
         db_question.number = None
     
     if question.title is not None:
@@ -608,6 +634,13 @@ def update_question(pack_id: int, question_id: int, question: QuestionUpdate, db
                 raise HTTPException(status_code=400, detail="For MCQ_MULTIPLE questions, at least 2 options are required")
             if len(option_keys) > max_options:
                 raise HTTPException(status_code=400, detail=f"For MCQ_MULTIPLE questions, maximum {max_options} options allowed (based on pack range {pack.start_question}-{pack.end_question})")
+        elif pack.type == "CHOOSE_FROM_BOX":
+            if not isinstance(question.options, dict):
+                raise HTTPException(status_code=400, detail="For CHOOSE_FROM_BOX questions, options (word box) must be a dictionary")
+            
+            # Word box should contain words, not letter options like MCQ
+            if any(len(key) == 1 and key.isalpha() and key.isupper() for key in question.options.keys()):
+                raise HTTPException(status_code=400, detail="For CHOOSE_FROM_BOX questions, word box should contain word identifiers, not letter options")
         
         db_question.options = question.options
     

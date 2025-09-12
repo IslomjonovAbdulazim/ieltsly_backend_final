@@ -47,6 +47,7 @@ class QuestionType(str, Enum):
     YES_NO_NOT_GIVEN = "YES_NO_NOT_GIVEN"
     SUMMARY_COMPLETION = "SUMMARY_COMPLETION"
     SENTENCE_COMPLETION = "SENTENCE_COMPLETION"
+    CHOOSE_FROM_BOX = "CHOOSE_FROM_BOX"
     MULTIPLE_CHOICE = "MULTIPLE_CHOICE"
     MCQ_MULTIPLE = "MCQ_MULTIPLE"
 
@@ -84,11 +85,11 @@ class DBQuestion(Base):
     number = Column(Integer, nullable=True)  # Question number within the pack (nullable for MCQ_MULTIPLE)
     title = Column(String, nullable=True)  # Optional title for questions
     text = Column(Text, nullable=False)  # Question text
-    options = Column(JSON, nullable=True)  # Multiple choice options (A, B, C, D)
+    options = Column(JSON, nullable=True)  # Multiple choice options (A, B, C, D) or word box for choose from box
     word_count = Column(Integer, nullable=True)  # Maximum words allowed per blank for summary/sentence completion
     number_count = Column(Integer, nullable=True)  # Maximum numbers allowed per blank for summary/sentence completion
     type = Column(String, nullable=False)  # Same as pack type for consistency
-    correct_answer = Column(JSON, nullable=True)  # String for T/F, JSON object for Summary/Sentence Completion, single letter for MCQ
+    correct_answer = Column(JSON, nullable=True)  # String for T/F, JSON object for Summary/Sentence/Choose from Box Completion, single letter for MCQ
     
     pack = relationship("DBQuestionPack", back_populates="questions")
 
@@ -158,13 +159,13 @@ class QuestionPack(BaseModel):
 
 # Unified Question Models
 class QuestionCreate(BaseModel):
-    number: Optional[int] = None  # Required for MULTIPLE_CHOICE, TRUE_FALSE_NOT_GIVEN, YES_NO_NOT_GIVEN, SUMMARY_COMPLETION, SENTENCE_COMPLETION. Not used for MCQ_MULTIPLE
+    number: Optional[int] = None  # Required for MULTIPLE_CHOICE, TRUE_FALSE_NOT_GIVEN, YES_NO_NOT_GIVEN, SENTENCE_COMPLETION. Not used for MCQ_MULTIPLE, CHOOSE_FROM_BOX, SUMMARY_COMPLETION
     title: Optional[str] = None  # Optional title for questions
     text: str
-    options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
+    options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D) or word box for CHOOSE_FROM_BOX
     word_count: Optional[int] = None  # Maximum words allowed per blank for summary/sentence completion
     number_count: Optional[int] = None  # Maximum numbers allowed per blank for summary/sentence completion
-    correct_answer: Optional[Union[str, Dict[str, str], List[str]]] = None  # String for T/F/MCQ, Dict for Summary/Sentence Completion, List for MCQ_MULTIPLE
+    correct_answer: Optional[Union[str, Dict[str, str], List[str]]] = None  # String for T/F/MCQ, Dict for Summary/Sentence/Choose from Box Completion, List for MCQ_MULTIPLE
     
     @validator('correct_answer')
     def validate_correct_answer(cls, v):
@@ -184,7 +185,7 @@ class QuestionCreate(BaseModel):
                     raise ValueError('List correct answers must not be empty')
                 # Further validation will happen in API based on provided options
             elif isinstance(v, dict):
-                # Dict validation for Summary/Sentence Completion - just check it's a dict
+                # Dict validation for Summary/Sentence/Choose from Box Completion - just check it's a dict
                 pass  # Further validation will happen in API based on pack type
             else:
                 raise ValueError('Correct answer must be a string, list, or dictionary')
@@ -195,7 +196,7 @@ class QuestionUpdate(BaseModel):
     number: Optional[int] = None
     title: Optional[str] = None
     text: Optional[str] = None
-    options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
+    options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D) or word box for CHOOSE_FROM_BOX
     word_count: Optional[int] = None  # Maximum words allowed per blank for summary/sentence completion
     number_count: Optional[int] = None  # Maximum numbers allowed per blank for summary/sentence completion
     correct_answer: Optional[Union[str, Dict[str, str], List[str]]] = None
@@ -229,7 +230,7 @@ class Question(BaseModel):
     number: Optional[int] = None  # Nullable for MCQ_MULTIPLE
     title: Optional[str] = None
     text: str
-    options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D)
+    options: Optional[Dict[str, str]] = None  # Multiple choice options (A, B, C, D) or word box for CHOOSE_FROM_BOX
     word_count: Optional[int] = None  # Maximum words allowed per blank for summary/sentence completion
     number_count: Optional[int] = None  # Maximum numbers allowed per blank for summary/sentence completion
     type: QuestionType
