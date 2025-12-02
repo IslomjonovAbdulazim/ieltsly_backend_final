@@ -6,10 +6,10 @@ from app.database import Base
 
 
 class Speaking(Base):
-    __tablename__ = "speaking"
+    __tablename__ = "ielts_speaking"
     
     id = Column(Integer, primary_key=True, index=True)
-    test_id = Column(Integer, ForeignKey("tests.id"), nullable=False)
+    test_id = Column(Integer, ForeignKey("ielts_tests.id"), nullable=False)
     # Example: ["Tell me about your hometown", "Describe your favorite hobby", "What are your future plans?"]
     questions = Column(JSON, nullable=False)
     instruction_ai = Column(Text, nullable=False)

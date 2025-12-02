@@ -6,10 +6,10 @@ from app.database import Base
 
 
 class Reading(Base):
-    __tablename__ = "reading"
+    __tablename__ = "ielts_reading"
     
     id = Column(Integer, primary_key=True, index=True)
-    test_id = Column(Integer, ForeignKey("tests.id"), nullable=False)
+    test_id = Column(Integer, ForeignKey("ielts_tests.id"), nullable=False)
     text1 = Column(Text, nullable=False)
     text2 = Column(Text, nullable=False)
     text3 = Column(Text, nullable=False)

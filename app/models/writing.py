@@ -6,10 +6,10 @@ from app.database import Base
 
 
 class Writing(Base):
-    __tablename__ = "writing"
+    __tablename__ = "ielts_writing"
     
     id = Column(Integer, primary_key=True, index=True)
-    test_id = Column(Integer, ForeignKey("tests.id"), nullable=False)
+    test_id = Column(Integer, ForeignKey("ielts_tests.id"), nullable=False)
     task_1_text = Column(Text, nullable=False)
     task_2_text = Column(Text, nullable=False)
     task_1_image_url = Column(String, nullable=True)

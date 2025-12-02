@@ -6,7 +6,7 @@ from app.database import Base
 
 
 class Test(Base):
-    __tablename__ = "tests"
+    __tablename__ = "ielts_tests"
     
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
