@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from config import Base, engine
-from router import reading, auth
+from app.database import Base, engine
+from app.routers import auth, tests, listening, reading, speaking, writing
 
 # Create tables with new schema
 Base.metadata.create_all(bind=engine)
@@ -20,8 +20,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(reading.router, prefix="/api/reading", tags=["Reading"])
+app.include_router(auth.router)
+app.include_router(tests.router)
+app.include_router(listening.router)
+app.include_router(reading.router)
+app.include_router(speaking.router)
+app.include_router(writing.router)
 
 @app.get("/")
 def root():
