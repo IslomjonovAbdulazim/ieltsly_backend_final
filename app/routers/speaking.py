@@ -32,8 +32,7 @@ async def get_all_speaking(db: Session = Depends(get_db)):
 
 @router.get("/test/{test_id}", response_model=SpeakingResponse)
 async def get_speaking_by_test(test_id: int, db: Session = Depends(get_db)):
-    db.flush()  # Ensure fresh data
-    speaking = db.query(Speaking).filter(Speaking.test_id == test_id).first()
+    speaking = db.query(Speaking).filter(Speaking.test_id == test_id).order_by(Speaking.id).first()
     if not speaking:
         logger.warning(f"Speaking section not found for test_id: {test_id}")
         raise HTTPException(status_code=404, detail="Speaking section not found")
