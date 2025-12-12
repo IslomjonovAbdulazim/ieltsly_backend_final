@@ -8,7 +8,7 @@ import io
 
 class UploadService:
     def __init__(self):
-        supabase_url = "https://bkvxbuidvwbqpqpxjwqf.supabase.co"
+        supabase_url = "https://zylnvfwcwdcwrmebnjio.supabase.co"
         supabase_key = os.getenv("SUPABASE_ANON_KEY")
         
         if not supabase_key:
