@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+import logging
 
 from app.database import get_db
 from app.models.speaking import Speaking, SpeakingCreate, SpeakingUpdate, SpeakingResponse
 from app.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/speaking", tags=["Speaking"])
 
@@ -29,9 +32,12 @@ async def get_all_speaking(db: Session = Depends(get_db)):
 
 @router.get("/test/{test_id}", response_model=SpeakingResponse)
 async def get_speaking_by_test(test_id: int, db: Session = Depends(get_db)):
+    db.flush()  # Ensure fresh data
     speaking = db.query(Speaking).filter(Speaking.test_id == test_id).first()
     if not speaking:
+        logger.warning(f"Speaking section not found for test_id: {test_id}")
         raise HTTPException(status_code=404, detail="Speaking section not found")
+    logger.info(f"Retrieved speaking data - test_id: {test_id}, speaking_id: {speaking.id}")
     return speaking
 
 
